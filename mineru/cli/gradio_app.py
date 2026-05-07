@@ -501,6 +501,11 @@ def resolve_parse_method(file_path, is_ocr, backend):
     return "ocr" if is_ocr else "auto"
 
 
+def is_image_analysis_option_visible(backend):
+    """判断 Gradio 图片分析开关是否应展示；pipeline 后端不消费该参数。"""
+    return backend.startswith("vlm") or backend.startswith("hybrid")
+
+
 def create_gradio_run_paths(file_path, output_root="./output"):
     run_id = f"{time.strftime('%y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{safe_stem(Path(file_path).stem)}"
     run_root = Path(output_root) / "gradio" / run_id
@@ -614,6 +619,7 @@ async def _run_to_markdown_job(
     is_ocr=False,
     formula_enable=True,
     table_enable=True,
+    image_analysis=True,
     language="ch",
     backend="pipeline",
     url=None,
@@ -640,6 +646,7 @@ async def _run_to_markdown_job(
         parse_method=parse_method,
         formula_enable=formula_enable,
         table_enable=table_enable,
+        image_analysis=image_analysis,
         server_url=url,
         start_page_id=0,
         end_page_id=end_pages - 1,
@@ -753,6 +760,7 @@ async def stream_to_markdown(
     is_ocr=False,
     formula_enable=True,
     table_enable=True,
+    image_analysis=True,
     language="ch",
     backend="pipeline",
     url=None,
@@ -781,6 +789,7 @@ async def stream_to_markdown(
                 is_ocr=is_ocr,
                 formula_enable=formula_enable,
                 table_enable=table_enable,
+                image_analysis=image_analysis,
                 language=language,
                 backend=backend,
                 url=url,
@@ -1094,6 +1103,8 @@ def main(ctx,
             "recognition_options": "**Recognition Options:**",
             "table_enable": "Enable table recognition",
             "table_info": "If disabled, tables will be shown as images.",
+            "image_analysis_enable": "Enable image analysis",
+            "image_analysis_info": "If disabled, image/chart blocks will keep layout positions but skip VLM image/chart analysis.",
             "formula_label_vlm": "Enable display formula recognition",
             "formula_label_pipeline": "Enable formula recognition",
             "formula_label_hybrid": "Enable inline formula recognition",
@@ -1126,6 +1137,8 @@ def main(ctx,
             "recognition_options": "**识别选项：**",
             "table_enable": "启用表格识别",
             "table_info": "禁用后，表格将显示为图片。",
+            "image_analysis_enable": "启用图片分析",
+            "image_analysis_info": "禁用后，图片/图表块仍保留版面位置，但跳过 VLM 图片/图表分析。",
             "formula_label_vlm": "启用行间公式识别",
             "formula_label_pipeline": "启用公式识别",
             "formula_label_hybrid": "启用行内公式识别",
@@ -1186,6 +1199,7 @@ def main(ctx,
     def update_interface(backend_choice):
         formula_label_update = gr.update(label=get_formula_label(backend_choice), info=get_formula_info(backend_choice))
         backend_info_update = gr.update(info=get_backend_info(backend_choice))
+        image_analysis_update = gr.update(visible=is_image_analysis_option_visible(backend_choice))
         if "http-client" in backend_choice:
             client_options_update = gr.update(visible=True)
         else:
@@ -1195,7 +1209,7 @@ def main(ctx,
         else:
             ocr_options_update = gr.update(visible=True)
 
-        return client_options_update, ocr_options_update, formula_label_update, backend_info_update
+        return client_options_update, ocr_options_update, formula_label_update, backend_info_update, image_analysis_update
 
 
     del kwargs
@@ -1223,6 +1237,7 @@ def main(ctx,
         is_ocr=False,
         formula_enable=True,
         table_enable=True,
+        image_analysis=True,
         language="ch",
         backend="pipeline",
         url=None,
@@ -1233,6 +1248,7 @@ def main(ctx,
             is_ocr=is_ocr,
             formula_enable=formula_enable,
             table_enable=table_enable,
+            image_analysis=image_analysis,
             language=language,
             backend=backend,
             url=url,
@@ -1264,6 +1280,12 @@ def main(ctx,
                             gr.Markdown(i18n("recognition_options"))
                             table_enable = gr.Checkbox(label=i18n("table_enable"), value=True, info=i18n("table_info"))
                             formula_enable = gr.Checkbox(label=get_formula_label(preferred_option), value=True, info=get_formula_info(preferred_option))
+                            image_analysis = gr.Checkbox(
+                                label=i18n("image_analysis_enable"),
+                                value=True,
+                                visible=is_image_analysis_option_visible(preferred_option),
+                                info=i18n("image_analysis_info"),
+                            )
                         with gr.Column() as ocr_options:
                             language = gr.Dropdown(all_lang, label=i18n("ocr_language"), value='ch (Chinese, English, Chinese Traditional)', info=i18n("ocr_language_info"))
                             is_ocr = gr.Checkbox(label=i18n("force_ocr"), value=False, info=i18n("force_ocr_info"))
@@ -1321,14 +1343,14 @@ def main(ctx,
         backend.change(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable, backend],
+            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
             **_private_api_kwargs
         )
         # 添加demo.load事件，在页面加载时触发一次界面更新
         demo.load(
             fn=update_interface,
             inputs=[backend],
-            outputs=[client_options, ocr_options, formula_enable, backend],
+            outputs=[client_options, ocr_options, formula_enable, backend, image_analysis],
             **_private_api_kwargs
         )
         status_box.change(
@@ -1382,7 +1404,7 @@ def main(ctx,
         )
         change_bu.click(
             fn=convert_to_markdown_stream,
-            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, language, backend, url],
+            inputs=[input_file, max_pages, is_ocr, formula_enable, table_enable, image_analysis, language, backend, url],
             outputs=[status_box, output_file, md, md_text, doc_show],
             **_to_md_api_kwargs
         )
