@@ -474,6 +474,30 @@ def _detect_table_headers_visual(
     return header_rows, headers_match, header_texts
 
 
+def _expand_header_count_by_rowspan(rows, header_count: int) -> int:
+    """按表头 rowspan 覆盖范围扩展跳过行数。
+
+    跨页续表的第一行表头可能包含 rowspan。如果只跳过已匹配的首行，
+    被该 rowspan 覆盖的后续表头行会失去占位来源，合并后形成半截表头。
+    因此跳过重复表头时，需要覆盖所有由已跳过表头行跨行占据的行。
+    """
+    if header_count <= 0 or not rows:
+        return header_count
+
+    expanded_header_count = min(header_count, len(rows))
+    row_idx = 0
+    while row_idx < expanded_header_count:
+        row = rows[row_idx]
+        for cell in row.find_all(["td", "th"]):
+            rowspan = int(cell.get("rowspan", 1))
+            if rowspan > 1:
+                expanded_header_count = max(expanded_header_count, row_idx + rowspan)
+                expanded_header_count = min(expanded_header_count, len(rows))
+        row_idx += 1
+
+    return expanded_header_count
+
+
 def can_merge_by_structure(
     current_state: TableMergeState,
     previous_state: TableMergeState,
@@ -556,6 +580,7 @@ def check_rows_match(previous_state: TableMergeState, current_state: TableMergeS
         return False
 
     header_count, _, _ = detect_table_headers(previous_state, current_state)
+    header_count = _expand_header_count_by_rowspan(current_state.rows, header_count)
     first_data_row_metrics = current_state.front_first_data_row_metrics.get(header_count)
     if first_data_row_metrics is None:
         return False
@@ -767,6 +792,7 @@ def perform_table_merge(
 ):
     """执行表格合并操作."""
     header_count, _, _ = detect_table_headers(previous_state, current_state)
+    header_count = _expand_header_count_by_rowspan(current_state.rows, header_count)
 
     rows1 = previous_state.rows
     rows2 = current_state.rows

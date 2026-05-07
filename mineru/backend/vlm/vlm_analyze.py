@@ -427,6 +427,7 @@ def doc_analyze(
     backend="transformers",
     model_path: str | None = None,
     server_url: str | None = None,
+    image_analysis: bool = True,
     **kwargs,
 ):
     if predictor is None:
@@ -472,7 +473,10 @@ def doc_analyze(
                         f'({len(images_pil_list)} pages)'
                     )
                     with predictor_execution_guard(predictor):
-                        window_results = predictor.batch_two_step_extract(images=images_pil_list)
+                        window_results = predictor.batch_two_step_extract(
+                            images=images_pil_list,
+                            image_analysis=image_analysis,
+                        )
                     results.extend(window_results)
                     if progress_bar is None:
                         progress_bar = tqdm(total=page_count, desc="Processing pages")
@@ -519,6 +523,7 @@ async def aio_doc_analyze(
     backend="transformers",
     model_path: str | None = None,
     server_url: str | None = None,
+    image_analysis: bool = True,
     **kwargs,
 ):
     if predictor is None:
@@ -563,7 +568,10 @@ async def aio_doc_analyze(
                         f'({len(images_pil_list)} pages)'
                     )
                     async with aio_predictor_execution_guard(predictor):
-                        window_results = await predictor.aio_batch_two_step_extract(images=images_pil_list)
+                        window_results = await predictor.aio_batch_two_step_extract(
+                            images=images_pil_list,
+                            image_analysis=image_analysis,
+                        )
                     results.extend(window_results)
                     if progress_bar is None:
                         progress_bar = tqdm(total=page_count, desc="Processing pages")

@@ -2,8 +2,6 @@
 from mineru.backend.pipeline.para_split import ListLineTag
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import _merge_para_text
 from mineru.utils.boxbase import (
-    bbox_center_distance,
-    bbox_distance,
     calculate_overlap_area_2_minbox_area_ratio,
     calculate_overlap_area_in_bbox1_area_ratio,
 )
@@ -12,6 +10,10 @@ from mineru.utils.guess_suffix_or_lang import guess_language_by_text
 from mineru.utils.span_block_fix import merge_spans_to_vertical_line, vertical_line_sort_spans_from_top_to_bottom, \
     merge_spans_to_line, line_sort_spans_by_left_to_right, is_vertical_text_block_by_spans
 from mineru.utils.span_pre_proc import txt_spans_extract
+from mineru.utils.visual_magic_model_utils import (
+    fallback_inline_caption_fragments,
+    find_best_visual_parent,
+)
 
 
 class MagicModel:
@@ -118,6 +120,7 @@ class MagicModel:
 
         self.page_blocks.sort(key=lambda x: x["index"])
         self.__build_page_blocks()
+        fallback_inline_caption_fragments(self.page_blocks, self.VISUAL_MAIN_TYPES)
         self.__classify_visual_blocks()
         self.__build_return_blocks()
 
@@ -459,54 +462,16 @@ class MagicModel:
         if child_type not in self.VISUAL_CHILD_TYPES:
             return None
 
-        best_parent = None
-        best_key = None
-        for main_block in main_blocks:
-            if not self.__is_visual_neighbor(
-                child_block,
-                main_block,
-                ordered_blocks,
-                original_type_by_index,
-                position_by_index,
-            ):
-                continue
-
-            candidate_key = (
-                abs(child_block["index"] - main_block["index"]),
-                bbox_distance(child_block["bbox"], main_block["bbox"]),
-                bbox_center_distance(child_block["bbox"], main_block["bbox"]),
-                main_block["index"],
-            )
-
-            if best_key is None or candidate_key < best_key:
-                best_key = candidate_key
-                best_parent = main_block
-
-        return best_parent
-
-    def __is_visual_neighbor(
-        self,
-        child_block,
-        main_block,
-        ordered_blocks,
-        original_type_by_index,
-        position_by_index,
-    ):
-        child_type = original_type_by_index[child_block["index"]]
-        if child_type == BlockType.FOOTNOTE and child_block["index"] < main_block["index"]:
-            return False
-
-        child_pos = position_by_index[child_block["index"]]
-        main_pos = position_by_index[main_block["index"]]
-        start_pos = min(child_pos, main_pos) + 1
-        end_pos = max(child_pos, main_pos)
-
-        for pos in range(start_pos, end_pos):
-            between_block = ordered_blocks[pos]
-            if original_type_by_index[between_block["index"]] != child_type:
-                return False
-
-        return True
+        return find_best_visual_parent(
+            child_block,
+            main_blocks,
+            ordered_blocks,
+            position_by_index,
+            main_type_to_visual_type={
+                block_type: block_type for block_type in self.VISUAL_MAIN_TYPES
+            },
+            type_by_index=original_type_by_index,
+        )
 
     @staticmethod
     def __child_kind(block_type):
